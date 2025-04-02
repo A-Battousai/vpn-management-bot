@@ -5,8 +5,7 @@
 
 ```bash
 # 1. دانلود اسکریپت از GitHub
-wget https://raw.githubusercontent.com/A-Battousai/vpn-management-bot/main/install_3xui_bot.sh
-
+wget https://raw.githubusercontent.com/A-Battousai/vpn-management-bot/main/install_3xui_bot.sh -O install_3xui_bot.sh
 # 2. دادن مجوز اجرا
 chmod +x install_3xui_bot.sh
 
