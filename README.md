@@ -5,7 +5,7 @@
 
 ```bash
 # 1. دانلود اسکریپت از GitHub
-wget https://raw.githubusercontent.com/username/3xui-telegram-bot/main/install_3xui_bot.sh
+wget https://raw.githubusercontent.com/A-Battousai/vpn-management-bot/main/install_3xui_bot.sh
 
 # 2. دادن مجوز اجرا
 chmod +x install_3xui_bot.sh
@@ -23,7 +23,7 @@ sudo ./install_3xui_bot.sh
 
    ## 📌 راهنمای نصب
    ```bash
-   wget https://raw.githubusercontent.com/username/3xui-telegram-bot/main/install_3xui_bot.sh
+   wget https://raw.githubusercontent.com/A-Battousai/vpn-management-bot/main/install_3xui_bot.sh
    chmod +x install_3xui_bot.sh
    sudo ./install_3xui_bot.sh
    ```
@@ -50,7 +50,7 @@ sudo ./install_3xui_bot.sh
 - **خطای `404` در دانلود**: مطمئن شوید آدرس ریپو و نام فایل درست است.  
 - **دسترسی رد شد**: اگر ریپو **Private** است، باید از **GitHub Token** استفاده کنید:  
   ```bash
-  wget https://raw.githubusercontent.com/username/3xui-telegram-bot/main/install_3xui_bot.sh?token=YOUR_TOKEN
+  wget https://raw.githubusercontent.com/A-Battousai/vpn-management-bot/main/install_3xui_bot.sh?token=YOUR_TOKEN
   ```
 
 ---
