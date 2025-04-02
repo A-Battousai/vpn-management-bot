@@ -33,7 +33,7 @@ apt update && apt upgrade -y || error "به روزرسانی سیستم با ش�
 
 # نصب پیش‌نیازها
 echo -e "${YELLOW}در حال نصب پیش‌نیازها...${NC}"
-apt install -y python3 python3-venv python3-pip git sqlite3 curl || error "نصب پیش‌نیازها با شکست مواجه شد."
+apt install -y python3 python3-venv python3-pip git sqlite3 curl chromium-chromedriver || error "نصب پیش‌نیازها با شکست مواجه شد."
 
 # دریافت اطلاعات پنل‌ها
 echo -e "\n${GREEN}تنظیمات پنل‌های 3x-ui${NC}"
@@ -80,13 +80,9 @@ echo -e "${YELLOW}در حال ایجاد محیط مجازی پایتون...${NC
 python3 -m venv venv || error "ایجاد محیط مجازی با شکست مواجه شد."
 source venv/bin/activate || error "فعال‌سازی محیط مجازی با شکست مواجه شد."
 
-# نصب کتابخانه‌های مورد نیاز
+# نصب کتابخانه‌های مورد نیاز با نسخه‌های سازگار
 echo -e "${YELLOW}در حال نصب کتابخانه‌های پایتون...${NC}"
 pip install python-telegram-bot==20.3 requests beautifulsoup4 selenium sqlalchemy || error "نصب کتابخانه‌ها با شکست مواجه شد."
-
-# دانلود درایور selenium برای وب اسکرپینگ
-echo -e "${YELLOW}در حال نصب درایور Chrome برای Selenium...${NC}"
-apt install -y chromium-chromedriver || warning "نصب chromedriver با شکست مواجه شد - ممکن است نیاز به تنظیم دستی داشته باشید"
 
 # ایجاد فایل پیکربندی
 echo -e "${YELLOW}در حال ایجاد فایل پیکربندی...${NC}"
@@ -118,18 +114,28 @@ cat >> config.json <<EOF
 }
 EOF
 
-# ایجاد فایل اصلی ربات
+# ایجاد فایل اصلی ربات با اصلاحات نهایی
 echo -e "${YELLOW}در حال ایجاد فایل اصلی ربات...${NC}"
 cat > 3xui_manager.py <<'EOF'
 import json
 import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, MessageHandler, Filters
+from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler, MessageHandler
+from telegram.ext import filters as Filters
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from urllib.parse import urljoin
 import time
+import logging
+
+# تنظیمات لاگ
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # تنظیمات اولیه
 with open('config.json') as f:
@@ -152,7 +158,8 @@ cursor.execute('''
         panel_id INTEGER,
         data_limit REAL,
         used_data REAL,
-        expiry_date TEXT
+        expiry_date TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
 ''')
 conn.commit()
@@ -167,41 +174,45 @@ def login_to_panel(panel):
         driver.get(get_panel_url(panel, 'login'))
         
         # پر کردن فرم لاگین
-        username_field = driver.find_element_by_name('username')
-        password_field = driver.find_element_by_name('password')
+        username_field = driver.find_element(By.NAME, 'username')
+        password_field = driver.find_element(By.NAME, 'password')
         
         username_field.send_keys(panel['username'])
         password_field.send_keys(panel['password'])
         
         # کلیک روی دکمه ورود
-        login_button = driver.find_element_by_xpath("//button[@type='submit']")
+        login_button = driver.find_element(By.XPATH, "//button[@type='submit']")
         login_button.click()
         
         # منتظر بمانید تا لاگین کامل شود
-        time.sleep(2)
+        time.sleep(3)
         return driver
         
     except Exception as e:
-        print(f"Error logging in to panel: {e}")
+        logger.error(f"خطا در ورود به پنل: {str(e)}")
         return None
 
 def get_account_info(driver, vpn_code):
     try:
         # رفتن به صفحه مدیریت اکانت‌ها
         driver.get(get_panel_url(panel, 'inbounds'))
-        time.sleep(2)
+        time.sleep(3)
         
         # پارس کردن صفحه با BeautifulSoup
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
         # پیدا کردن اکانت بر اساس کد VPN
-        # این بخش نیاز به تنظیم دقیق‌تر بر اساس ساختار پنل شما دارد
-        account_row = soup.find(text=vpn_code).find_parent('tr')
-        
+        account_row = None
+        for row in soup.find_all('tr'):
+            if vpn_code in row.text:
+                account_row = row
+                break
+                
         if account_row:
             # استخراج اطلاعات از ردیف جدول
-            data_usage = account_row.find('td', {'class': 'usage'}).text
-            expiry_date = account_row.find('td', {'class': 'expiry'}).text
+            cells = account_row.find_all('td')
+            data_usage = cells[4].get_text(strip=True) if len(cells) > 4 else "N/A"
+            expiry_date = cells[5].get_text(strip=True) if len(cells) > 5 else "N/A"
             
             return {
                 'data_usage': data_usage,
@@ -210,7 +221,7 @@ def get_account_info(driver, vpn_code):
         return None
         
     except Exception as e:
-        print(f"Error getting account info: {e}")
+        logger.error(f"خطا در دریافت اطلاعات اکانت: {str(e)}")
         return None
 
 def start(update: Update, context: CallbackContext):
@@ -226,7 +237,7 @@ def start(update: Update, context: CallbackContext):
     )
 
 def handle_vpn_code(update: Update, context: CallbackContext):
-    vpn_code = update.message.text
+    vpn_code = update.message.text.strip()
     user_id = update.effective_user.id
     
     # جستجو در تمام پنل‌ها
@@ -293,6 +304,9 @@ def admin_command(update: Update, context: CallbackContext):
         
         update.message.reply_text(f"✅ مالک اکانت {vpn_code} به {new_user_id} تغییر یافت.")
 
+def error_handler(update: Update, context: CallbackContext):
+    logger.error(f"خطا در پردازش پیام: {context.error}")
+
 def main():
     updater = Updater(config['telegram_token'])
     dp = updater.dispatcher
@@ -300,7 +314,8 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("change_owner", admin_command))
     dp.add_handler(CallbackQueryHandler(button_handler))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_vpn_code))
+    dp.add_handler(MessageHandler(Filters.TEXT & ~Filters.COMMAND, handle_vpn_code))
+    dp.add_error_handler(error_handler)
     
     updater.start_polling()
     updater.idle()
@@ -309,18 +324,21 @@ if __name__ == '__main__':
     main()
 EOF
 
-# ایجاد سرویس systemd
+# ایجاد سرویس systemd با تنظیمات بهینه
 echo -e "${YELLOW}در حال ایجاد سرویس systemd...${NC}"
 cat > /etc/systemd/system/3xui-manager.service <<EOF
 [Unit]
 Description=3X-UI Manager Bot
 After=network.target
+StartLimitIntervalSec=60
 
 [Service]
 User=root
 WorkingDirectory=$PROJECT_DIR
 ExecStart=$PROJECT_DIR/venv/bin/python $PROJECT_DIR/3xui_manager.py
 Restart=always
+RestartSec=10
+Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=multi-user.target
@@ -331,7 +349,13 @@ systemctl daemon-reload
 systemctl enable 3xui-manager
 systemctl start 3xui-manager
 
+# بررسی وضعیت سرویس
+echo -e "${YELLOW}بررسی وضعیت سرویس...${NC}"
+sleep 5
+systemctl status 3xui-manager --no-pager
+
 # نصب تکمیل شد
 success "نصب ربات مدیریت 3X-UI با موفقیت انجام شد!"
 echo -e "برای مشاهده لاگ‌ها از دستور زیر استفاده کنید:"
 echo -e "${GREEN}journalctl -u 3xui-manager -f${NC}"
+echo -e "\nاگر خطایی مشاهده کردید، لطفاً گزارش دهید."
